@@ -10,6 +10,32 @@ document.body.classList.add("is-loading");
 
 const pageLoader = document.querySelector(".page-loader");
 const pageImages = [...document.querySelectorAll("img")];
+const navToggler = document.querySelector(".nav-toggler");
+const menu = document.querySelector(".menu");
+const menuContainer = document.querySelector(".menu-container");
+const menuColumns = document.querySelectorAll(".menu-col");
+const menuLinks = document.querySelectorAll(".menu-col a");
+let resourcesReady = false;
+let presentationComplete = false;
+let isMenuOpen = false;
+let isNavHidden = false;
+let menuTimeline;
+
+menuContainer.addEventListener("transitionend", (event) => {
+  if (event.propertyName !== "transform" || isMenuOpen) return;
+
+  menu.setAttribute("aria-hidden", "true");
+  lenis.start();
+  syncMenuButtonVisibility();
+});
+
+const syncMenuButtonVisibility = () => {
+  navToggler.classList.toggle(
+    "is-visible",
+    resourcesReady && presentationComplete && (!isNavHidden || isMenuOpen),
+  );
+};
+
 window.setTimeout(() => {
   pageLoader.classList.add("is-palette-visible");
 }, 1800);
@@ -36,6 +62,8 @@ const pageResources = Promise.all([
 pageResources.then(() => {
   pageLoader.classList.add("is-complete");
   document.body.classList.remove("is-loading");
+  resourcesReady = true;
+  syncMenuButtonVisibility();
 });
 
 const lenis = new Lenis({
@@ -88,6 +116,15 @@ ScrollTrigger.create({
   pinSpacing: false,
   onUpdate: (self) => {
     const scrollProgress = self.progress;
+    presentationComplete = scrollProgress >= 0.75;
+
+    if (self.direction === -1) {
+      isNavHidden = false;
+    } else if (self.direction === 1 && scrollProgress >= 1) {
+      isNavHidden = true;
+    }
+
+    syncMenuButtonVisibility();
 
     const galleryProgress = mapRange(scrollProgress, 0, 0.75);
     const galleryScale = lerp(1, 0.5, galleryProgress);
@@ -130,13 +167,71 @@ ScrollTrigger.create({
 });
 
 ScrollTrigger.create({
-    trigger: ".studio",
-    start: "top bottom",
-    end: "top top",
-    scrub: true,
-    onUpdate: (self) => {
-        const exitProgress = self.progress;
+  trigger: ".studio",
+  start: "top bottom",
+  end: "top top",
+  scrub: true,
+  onUpdate: (self) => {
+    const exitProgress = self.progress;
 
-        gsap.set(heroInner, { y: `${-25 * exitProgress}%`});
-    },
+    gsap.set(heroInner, { y: `${-25 * exitProgress}%` });
+  },
+});
+
+SplitText.create(".menu-col a", {
+  type: "lines, words",
+  mask: "words",
+  wordsClass: "word",
+});
+
+const setMenuState = (nextState) => {
+  isMenuOpen = nextState;
+  navToggler.classList.toggle("open", isMenuOpen);
+  navToggler.setAttribute("aria-expanded", String(isMenuOpen));
+  navToggler.setAttribute(
+    "aria-label",
+    isMenuOpen ? "Fechar menu" : "Abrir menu",
+  );
+  menuTimeline?.kill();
+
+  if (isMenuOpen) {
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    navToggler.classList.add("is-visible");
+    lenis.stop();
+    menuTimeline = gsap.timeline();
+  } else {
+    menuTimeline = gsap.timeline({
+      onComplete: () => menu.classList.remove("is-open"),
+    });
+  }
+
+  menuColumns.forEach((column, columnIndex) => {
+    const links = column.querySelectorAll("a");
+
+    links.forEach((link, linkIndex) => {
+      const words = link.querySelectorAll(".word");
+      menuTimeline.to(
+        words,
+        {
+          y: isMenuOpen ? "0%" : "100%",
+          opacity: isMenuOpen ? 1 : 0,
+          duration: isMenuOpen ? 1 : 0.75,
+          ease: "power3.out",
+        },
+        isMenuOpen ? 0.65 + columnIndex * 0.1 + linkIndex * 0.05 : 0,
+      );
+    });
+  });
+};
+
+navToggler.addEventListener("click", () => {
+  setMenuState(!isMenuOpen);
+});
+
+menuLinks.forEach((link) => {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    setMenuState(false);
+  });
 });
